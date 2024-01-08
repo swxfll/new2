@@ -1,0 +1,23 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: alertmanager-config
+  namespace: prome
+data:
+  alertmanager.yml: |-
+    route:
+      group_by: ['alertname']
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 1h
+      receiver: 'web.hook'
+    receivers:
+      - name: 'web.hook'
+        webhook_configs:
+          - url: 'http://webhook-service:8080/alertmanager-feishu-webhook'
+    inhibit_rules:
+      - source_match:
+          severity: 'critical'
+        target_match:
+          severity: 'warning'
+        equal: ['alertname', 'dev', 'instance']

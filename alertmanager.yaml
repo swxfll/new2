@@ -1,0 +1,36 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: alertmanager 
+  name: alertmanager
+  namespace: prome
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: alertmanager
+  template:
+    metadata:
+      labels:
+        app: alertmanager
+    spec:
+      #serviceAccountName: prometheus
+      #serviceAccount: prometheus
+      containers:
+      - name: alertmanager
+        image: prom/alertmanager:v0.26.0
+        command:
+        - "/bin/alertmanager"
+        args:
+        - "--config.file=/etc/alertmanager/alertmanager.yml"
+        ports:
+        - containerPort: 9090
+          protocol: TCP
+        volumeMounts:
+        - mountPath: "/etc/alertmanager"
+          name: alertmanager-conf
+      volumes:
+      - name: alertmanager-conf
+        configMap:
+          name: alertmanager-config

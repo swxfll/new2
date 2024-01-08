@@ -1,0 +1,31 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: node-exporter
+  namespace: prome
+spec:
+  selector:
+    matchLabels:
+      app: node-exporter
+  template:
+    metadata:
+      annotations:
+        prometheus.io/scrape: 'true'
+        prometheus.io/port: '9100'
+        prometheus.io/path: 'metrics'
+      labels:
+        app: node-exporter
+      name: node-exporter
+    spec:
+      containers:
+      - image: prom/node-exporter
+        imagePullPolicy: IfNotPresent
+        name: node-exporter
+        ports:
+        - containerPort: 9100
+          hostPort: 9100
+          name: scrape
+      # 由于Node Exporter需要能够访问宿主机，
+      # 因此这里指定了hostNetwork和hostPID，让Pod实例能够以主机网络以及系统进程的形式运行
+      hostNetwork: true
+      hostPID: true

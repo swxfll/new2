@@ -1,0 +1,130 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  namespace: prome
+data:
+  prometheus.yml: |-
+    global:
+      scrape_interval:     15s
+      evaluation_interval: 15s
+    ############ 添加配置 AlertManager 服务器地址 ###################
+    alerting:
+      alertmanagers:
+      - static_configs:
+        - targets: ["alertmanager:9093"] 
+    ############ 指定告警规则文件路径位置 ###################
+    rule_files:
+    - /etc/prometheus/*-rule.yml
+    ############ scrape ###################
+    scrape_configs:
+      - job_name: 'prometheus-self'
+        static_configs:
+        - targets: ['localhost:9090']
+          labels:
+            tag: 'selfxxxx'
+    
+      - job_name: 'kubernetes-pods-ds-node-export'
+        # 覆盖 global 中的 scrape_interval
+        scrape_interval: 10s
+        scrape_timeout: 5s
+        metrics_path: '/metrics'
+        # 使用目标暴露的指标数据中的时间戳
+        honor_timestamps: true
+        scheme: 'http'
+        # 跟随 HTTP 3xx 重定向
+        follow_redirects: true
+        enable_http2: true
+        kubernetes_sd_configs:
+        - role: pod
+        relabel_configs:
+        - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+          action: keep
+          regex: true
+        - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+          action: replace
+          target_label: __metrics_path__
+          regex: (.+)
+        - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+          action: replace
+          regex: ([^:]+)(?::\d+)?;(\d+)
+          replacement: $1:$2
+          target_label: __address__
+        - action: labelmap
+          regex: __meta_kubernetes_pod_label_(.+)
+        - source_labels: [__meta_kubernetes_namespace]
+          action: replace
+          target_label: kubernetes_namespace
+        - source_labels: [__meta_kubernetes_pod_name]
+          action: replace
+          target_label: kubernetes_pod_name
+
+      - job_name: 'kubernetes-nodes'
+        tls_config:
+          ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+        bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+        kubernetes_sd_configs:
+        - role: node
+        relabel_configs:
+        - source_labels: [__address__]
+          regex: '(.*):10250'
+          replacement: '${1}:9100'
+          target_label: __address__
+          action: replace
+    
+      - job_name: 'kubernetes-pods'
+        tls_config:
+          ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+        bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+        kubernetes_sd_configs:
+        - role: pod
+    
+      - job_name: 'kubernetes-kubelet'
+        scheme: https
+        tls_config:
+          ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+        bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+        kubernetes_sd_configs:
+        - role: node
+        relabel_configs:
+        - action: labelmap
+          regex: __meta_kubernetes_node_label_(.+)
+        - target_label: __address__
+          replacement: kubernetes.default.svc:443
+        - source_labels: [__meta_kubernetes_node_name]
+          regex: (.+)
+          target_label: __metrics_path__
+          replacement: /api/v1/nodes/${1}/proxy/metrics
+    
+      - job_name: 'kubernetes-cadvisor'
+        scheme: https
+        tls_config:
+         ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+         #insecure_skip_verify: true
+        bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+        kubernetes_sd_configs:
+        - role: node
+        relabel_configs:
+        - target_label: __address__
+          replacement: kubernetes.default.svc:443
+        - source_labels: [__meta_kubernetes_node_name]
+          regex: (.+)
+          target_label: __metrics_path__
+          replacement: /api/v1/nodes/${1}/proxy/metrics/cadvisor
+        - action: labelmap
+          regex: __meta_kubernetes_node_label_(.+)
+    
+  ## 新增告警规则文件,可以参考: https://prometheus.io/docs/alerting/latest/notification_examples/
+  test-rule.yml: |-
+    groups:
+    - name: node load 1 
+      rules:
+      - alert: node load 1 is gerater then 1
+        expr: node_load1{job="kubernetes-pods-ds-node-export"} > 1
+        for: 1s
+        labels:
+          severity: page
+        annotations:
+          description: '{{ $labels.instance }} of job {{ $labels.job }} 最近1分钟的平均负载大于1'
+          summary: '{{ $labels.instance }}'
+          value: '{{ printf "%.2f" $value }}'
